@@ -1,0 +1,58 @@
+
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/android-apk.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Extract Android project ZIP
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y unzip
+          mkdir -p project
+          ZIP_FILE=$(find . -maxdepth 1 -type f -iname "*.zip" | head -n 1)
+          if [ -z "$ZIP_FILE" ]; then
+            echo "No ZIP file found in repository root"
+            exit 1
+          fi
+          unzip -q "$ZIP_FILE" -d project
+          GRADLEW=$(find project -type f -name gradlew | head -n 1)
+          if [ -z "$GRADLEW" ]; then
+            echo "gradlew not found inside ZIP"
+            find project -maxdepth 3 -type f | head -n 80
+            exit 1
+          fi
+          echo "PROJECT_DIR=$(dirname "$GRADLEW")" >> "$GITHUB_ENV"
+
+      - name: Build debug APK
+        run: |
+          cd "$PROJECT_DIR"
+          sed -i 's/\r$//' gradlew
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-debug-apk
+          path: project/**/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
